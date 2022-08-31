@@ -8,9 +8,9 @@
  * and a direction to move along the tape. The direction is either R, to move one digit to the right, 
  *, or L, and in addition it may command STOP to stop the machine.
  *
- * The machine starts at position 0 on the tape. At every step, the present internal state and bit
- * being read are printed, by default to stdout, along with the instruction to be executed. When the
- * machine reaches STOP, the program exits.
+ * The machine starts at position 0 on the tape, with internal state 0. At every step, the present 
+ * internal state and bit being read are printed, by default to stdout, along with the instruction to 
+ * be executed. When the machine reaches STOP, the program exits.
  *
  * Text files representing a length of tape and an instruction set respectively must be given
  * as command-line paramaters. Any changes made to the tape will be saved to the file; this won't 
@@ -32,7 +32,8 @@
 #include <stdarg.h>
 #include <stdlib.h>
 
-#include "tape.h"
+#define BUFFER_SIZE 1024
+#define LOG_STREAM stdout
 
 // The instruction list is captured by a two-dimensional array, structured as [state][bit], of 
 // operations to carry out. Each operation is a struct of a new state to enter, a digit to write,
@@ -44,8 +45,11 @@ struct op{
 	bool stop;
 };
 
+// Some global variables
 struct op (*instructions)[2];
 char max_states;
+int position = 0;
+char state = 0;
 
 // Print a formatted string to the log, i.e. either to stdout or do nothing
 void logprint(char *fmt, ...){
@@ -61,6 +65,11 @@ void logprint(char *fmt, ...){
 void print_usg(){
 	printf("USAGE: ./tape.c [INSTRUCTION SET] [TAPE] [OPTIONS]\n\n");
 	printf("Options:\n\n\t-p\t\tprint each operation in turn\n\n");
+}
+
+// Return a char * detailing the given instruction
+void print_instruc(int instate, int indigit){
+	fprintf(LOG_STREAM, "%d,%d->%d,%d,%c%s", instate, indigit, instructions[instate][indigit].state, instructions[instate][indigit].val, (instructions[instate][indigit].dir ? 'R' : 'L'), (instructions[instate][indigit].stop ? "STOP" : ""));
 }
 
 // Interpret char *instruc and add to the list
@@ -140,7 +149,7 @@ int parse_instruc(char *instruc){
 	if (opchars[i] == '\n' || opchars[i] == 127){
 		curr_op.stop = false;
 	} else{
-		if (strlen(opchars) < i+4)
+		if (strlen(opchars) < i+3)
 			return 1;
 		if (opchars[i] != 'S' || opchars[i+1] != 'T' || opchars[i+2] != 'O' || opchars[i+3] != 'P')
 			return 1;
@@ -148,7 +157,7 @@ int parse_instruc(char *instruc){
 
 	// Then store the instruction in instructions
 	instructions[instate][indigit] = curr_op;
-	logprint("Loading operation %d, %d, %c %s to state %d and bit %d.\n", curr_op.state, curr_op.val, (curr_op.dir ? 'R' : 'L'), (curr_op.stop ? ", STOP " : " "), instate, indigit);
+	logprint("Loading operation %d, %d, %c %sto state %d and bit %d.\n", curr_op.state, curr_op.val, (curr_op.dir ? 'R' : 'L'), (curr_op.stop ? ", STOP " : " "), instate, indigit);
 	
 	return 0;
 }
@@ -191,9 +200,9 @@ int load_instrucs(char *fname){
 	instructions = malloc(sizeof(struct op[max_states][2]));
 
 	// Then loop through the subsequent lines, which should number max_states * 2
-	char line[21];
+	char line[20];
 	for (int l=0; l<max_states*2; l++){
-		if (!fgets(line, 21, fp)){
+		if (!fgets(line, 20, fp)){
 			printf("Error reading %s: %d instructions expected.\n", fname, max_states*2);
 			fclose(fp);
 			return 1;
@@ -224,6 +233,48 @@ int main(int argc, char *argv[]){
 	if (load_instrucs(argv[1]) == 1){
 		return 1;
 	}
+
+	// Run the machine
+	bool tape[] = {0, 0, 0, 0, 1, 1, 1, 0, 0, 0};
+	int max_pos = sizeof(tape) / sizeof(bool) - 1;
+	struct op curr_op;
+	logprint("Execution:\n");
+	logprint("|Machine state | Position | Bit | Instruction\n");
+	logprint("|=================================================\n");
+
+	while (true){
+		// Print to log
+		logprint("| %-13d| %-9d| %-4d| ", state, position, tape[position]);
+		print_instruc(state, tape[position]);
+		logprint("\n");
+
+		// Execute the operation
+		curr_op = instructions[state][tape[position]];
+		state = curr_op.state;
+		tape[position] = curr_op.val;
+		position += curr_op.dir ? 1 : -1;
+		if (curr_op.stop){
+			logprint("STOP reached.\n");
+			break;
+		}
+
+		if (position > max_pos){
+			logprint("End of tape reached.\n");
+			break;
+		}
+	}
+
+	// Finish up
+	printf("Final state: %d\n", state);
+	printf("Final position: %d\n", position);
+	printf("Bit at final position: %d\n", tape[position]);
+
+	// Print the tape
+	logprint("Tape: ");
+	for (int i=0; i<max_pos; i++){
+		logprint("%d", tape[i]);
+	}
+	logprint("\n");
 
 	free(instructions);
 }
