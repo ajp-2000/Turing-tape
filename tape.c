@@ -283,7 +283,35 @@ int read_buf(int start){
 
 int write_buf(int start){
 	extern FILE *tapef;
-	fseek(tapef, start, SEEK_SET);
+	if (fseek(tapef, start, SEEK_SET) != 0){
+		if (start < 0){
+			// The start point is before the file begins, i.e. a new buffer-sized segment has been
+			// added to the left. A real Turing machine would have infinite tape in both directions,
+			// and our limitation is just because we are simulating one using a .txt file that has to
+			// begin somewhere - so we can justifiably 'cheat' by moving the whole file to the right
+			// in a chunk of a size that the machine we are simulating wouldn't be able to process
+			// all at once.
+			fseek(tapef, 0, SEEK_END);
+			int flen = ftell(tapef);
+			char curr_f[flen];
+
+			fseek(tapef, 0, SEEK_SET);
+			for (int i=0; i<flen; i++)
+				curr_f[i] = fgetc(tapef);
+
+			// Write the buffer to the beginning, and then append the rest of the tape
+			write_buf(0);
+			for (int i=0; i<flen; i++)
+				fputc(curr_f[i], tapef);
+		} else{
+			// Then the problem was that start is beyond where the file ends, so we pad it with zeroes
+			fseek(tapef, 0, SEEK_END);
+			while (ftell(tapef) != start){
+				fputc('0', tapef);
+				fseek(tapef, 0, SEEK_END);
+			}
+		}
+	}
 
 	for (int i=0; i<BUFFER_SIZE; i++){
 		int error = fputc((buffer[i] ? '1' : '0'), tapef);
