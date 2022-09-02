@@ -7,10 +7,10 @@
  Text files representing a length of tape and an instruction set respectively must be given as command-line paramaters. Any changes made to the tape will be saved to the file; this won't necessarily all be at the STOP command, because the program only reads one buffer of tape at a time, and writes all changes to that buffer once a new section of tape is needed. The BUFFER_SIZE is 128 by default, which is much smaller than modern computers demand, but low enough to demonstrate the principle of a buffer within the small scale on which we are working. The number of possible internal states is capped at 128 (as the internal state is represented by a non-negative signed byte), and the number of instructions is capped accordingly. Equally, one instruction for every possible combination of internal state and bit currently read.
 
 # Example Instruction Sets
- increment.txt - increments the first number found to the right of the zero-position by one, in unary notation. (From Penrose's The Emperor's New Mind)
+ increment.txt - increments the first number found to the right of the zero-position by one, in unary notation. (From Penrose's The Emperor's New Mind, p.54)
  
  back_increment.txt - increments one to the first number found to the right of the zero-position (since there are only zeroes to the left), but places the new 1 to the left of this number. This demonstrates the program's ability to generate indefinitely manny zeroes to the left, and shift the rest of the tape right accordingly.
  
  infinite.txt - changes nothing on the tape, and moves right indefinitely. Demonstrates zero-generation to the right, and the program's safety check against instruction tables with no STOP command.
  
- euclid.txt - carries out Euclid's algorithm for finding the highest common divisor of two positive integers, each in unary form, separated by one zero. (From Penrose)
+ euclid.txt - carries out Euclid's algorithm for finding the highest common divisor of two positive integers, each in unary form, separated by one zero. (From Penrose p.54)
