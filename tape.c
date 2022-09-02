@@ -86,32 +86,32 @@ void parse_error(int code){
 	switch (code){
 		case 1:
 		case 6:
-			printf("Instruction too short to be valid.\n");
+			logprint("Instruction too short to be valid.\n");
 			break;
 		case 2:
-			printf("Input state (0 to 127 inclusive) must be followed by a comma.\n");
+			logprint("Input state (0 to 127 inclusive) must be followed by a comma.\n");
 			break;
 		case 3:
-			printf("Input state in an instruction (zero-based) must not exceed STATES.\n");
+			logprint("Input state in an instruction (zero-based) must not exceed STATES.\n");
 			break;
 		case 4:
-			printf("Input digit must be either 0 or 1.\n");
+			logprint("Input digit must be either 0 or 1.\n");
 			break;
 		case 5:
-			printf("New internal state (zero-based) must not exceed STATES.\n");
+			logprint("New internal state (zero-based) must not exceed STATES.\n");
 			break;
 		case 7:
-			printf("Digit to be written must be either 0 or 1.\n");
+			logprint("Digit to be written must be either 0 or 1.\n");
 			break;
 		case 8:
-			printf("Digit to be written must be followed by a comma.\n");
+			logprint("Digit to be written must be followed by a comma.\n");
 			break;
 		case 9:
-			printf("Direction must be either R or L.\n");
+			logprint("Direction must be either R or L.\n");
 			break;
 		case 10:
 		case 11:
-			printf("Direction must be followed either by end of line or by STOP.\n");
+			logprint("Direction must be followed either by end of line or by STOP.\n");
 			break;
 	}
 }
@@ -277,11 +277,32 @@ int load_instrucs(char *fname){
 	}
 
 	// Ignore the rest of the file if there is any
-	if (fgetc(fp) != EOF){
-		printf("WARNING: Ignoring %s from line %d.\n", fname, max_states*2+2);
-	}
+	if (fgetc(fp) != EOF)
+		logprint("WARNING: Ignoring %s from line %d.\n", fname, max_states*2+2);
 
 	fclose(fp);
+
+	// If there's no STOP command, the machine may run forever and clog up the terminal. 
+	// Double-check the user wants this
+	bool stoppable = false;
+	for (int s=0; s<max_states; s++){
+		for (int d=0; d<2; d++){
+			if (instructions[s][d].stop) stoppable = true;
+		}
+	}
+
+	if (!stoppable){
+		char c;
+		do{
+			printf("WARNING: No STOP command found. Run anyway? (y/n)");
+			scanf(" %c", &c);
+			c = tolower(c);
+		} while (c != 'y' && c != 'n');
+
+		if (c == 'n')
+			return 1;
+	}
+
 	return 0;
 }
 
@@ -344,6 +365,8 @@ int write_buf(int start){
 			write_buf(0);
 			for (int i=0; i<flen; i++)
 				fputc(curr_f[i], tapef);
+
+			return 0;
 		} else{
 			// Then the problem was that start is beyond where the file ends, so we pad it with zeroes
 			fseek(tapef, 0, SEEK_END);
@@ -413,7 +436,7 @@ int run(){
 			// Do the same but to the left
 			if (write_buf(buf_pos*BUFFER_SIZE))
 				return 1;
-			position = 0;
+			position = BUFFER_SIZE - 1;
 			buf_pos--;
 			if (read_buf(buf_pos*BUFFER_SIZE))
 				return 1;
