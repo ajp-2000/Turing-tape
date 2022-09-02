@@ -18,7 +18,7 @@
  * time, and writes all changes to that buffer once a new section of tape is needed. The BUFFER_SIZE 
  * is 128 by default, which is much smaller than modern computers demand, but low enough to 
  * demonstrate the principle of a buffer within the small scale on which we are working. The number 
- * of possible internal states is capped at 128 (as the internal state is represented by a non-negative)
+ * of possible internal states is capped at 128 (as the internal state is represented by a non-negative
  * signed byte), and the number of instructions is capped accordingly. Equally, one instruction for
  * every possible combination of internal state and bit currently read.
  *
@@ -81,6 +81,41 @@ void print_instruc(int instate, int indigit){
 		fprintf(LOG_STREAM, "%d,%d->%d,%d,%c%s", instate, indigit, instructions[instate][indigit].state, instructions[instate][indigit].val, (instructions[instate][indigit].dir ? 'R' : 'L'), (instructions[instate][indigit].stop ? "STOP" : ""));
 }
 
+// Print an error message based on return value code from parse_instruc
+void parse_error(int code){
+	switch (code){
+		case 1:
+		case 6:
+			printf("Instruction too short to be valid.\n");
+			break;
+		case 2:
+			printf("Input state (0 to 127 inclusive) must be followed by a comma.\n");
+			break;
+		case 3:
+			printf("Input state in an instruction (zero-based) must not exceed STATES.\n");
+			break;
+		case 4:
+			printf("Input digit must be either 0 or 1.\n");
+			break;
+		case 5:
+			printf("New internal state (zero-based) must not exceed STATES.\n");
+			break;
+		case 7:
+			printf("Digit to be written must be either 0 or 1.\n");
+			break;
+		case 8:
+			printf("Digit to be written must be followed by a comma.\n");
+			break;
+		case 9:
+			printf("Direction must be either R or L.\n");
+			break;
+		case 10:
+		case 11:
+			printf("Direction must be followed either by end of line or by STOP.\n");
+			break;
+	}
+}
+
 // Interpret char *instruc and add to the list
 int parse_instruc(char *instruc){
 	// The position in instructions to store the operation (when we get to it)
@@ -96,12 +131,14 @@ int parse_instruc(char *instruc){
 
 	for (i=0; i<3 && instruc[i]!=','; i++)
 		state[i] = instruc[i];
+	if (i != 3)
+		state[i] = '\0';
 	if (instruc[i] != ',')
-		return 1;
+		return 2;
 
 	instate = atoi(state);
 	if (instate >= max_states)
-		return 1;
+		return 3;
 	i++;
 
 	// Then we have a 1 or a 0, followed immediately by ->
@@ -111,7 +148,7 @@ int parse_instruc(char *instruc){
 		if (instruc[i+1] != '-' || instruc[i+2] != '>')
 			return 1;
 	} else{
-		return 1;
+		return 4;
 	}
 	i += 3;
 
@@ -131,37 +168,39 @@ int parse_instruc(char *instruc){
 
 	curr_op.state = (char) atoi(state);
 	if (curr_op.state >= max_states)
-		return 1;
+		return 5;
 	i++;
 
 	// Check the instruction contains enough characters for the remaining
 	if (strlen(opchars) < i+4)
-		return 1;
+		return 6;
 	
 	// The next comma-delimited segment is either a 1 or a 0
-	if ((opchars[i]=='0' || opchars[i]=='1') && opchars[i+1] == ','){
+	if (opchars[i]=='0' || opchars[i]=='1'){
 		curr_op.val = opchars[i] == '1';
 	} else{
-		return 1;
+		return 7;
 	}
+	if (opchars[i+1] != ',')
+		return 8;
 	i += 2;
 
 	// Then either R or L
 	if (opchars[i] == 'L' || opchars[i] == 'R'){
 		curr_op.dir = opchars[i] == 'R';
 	} else{
-		return 1;
+		return 9;
 	}
 	i += 1;
 
 	// And finally check if the instruction contains STOP
-	if (opchars[i] == '\n' || opchars[i] == 127){
+	if (opchars[i] == '\n' || opchars[i] == 127 || opchars[i] == '\0' || opchars[i] == EOF){
 		curr_op.stop = false;
 	} else{
 		if (strlen(opchars) < i+3)
-			return 1;
+			return 10;
 		if (opchars[i] != 'S' || opchars[i+1] != 'T' || opchars[i+2] != 'O' || opchars[i+3] != 'P')
-			return 1;
+			return 11;
 
 		curr_op.stop = true;
 	}
@@ -228,8 +267,10 @@ int load_instrucs(char *fname){
 		if (!fgets(line, 20, fp)){
 			break;
 		}
-		if (parse_instruc(line) != 0){
+		int error = parse_instruc(line);
+		if (error){
 			printf("Error parsing instruction: %s\n", line);
+			parse_error(error);
 			fclose(fp);
 			return 1;
 		}
@@ -364,7 +405,6 @@ int run(){
 			// Write the current buffer, then load the block one to the right
 			if (write_buf(buf_pos*BUFFER_SIZE))
 				return 1;
-
 			position = 0;
 			buf_pos++;
 			if (read_buf(buf_pos*BUFFER_SIZE))
@@ -373,7 +413,6 @@ int run(){
 			// Do the same but to the left
 			if (write_buf(buf_pos*BUFFER_SIZE))
 				return 1;
-			
 			position = 0;
 			buf_pos--;
 			if (read_buf(buf_pos*BUFFER_SIZE))
