@@ -8,5 +8,9 @@
 
 # Example Instruction Sets
  increment.txt - increments the first number found to the right of the zero-position by one, in unary notation. (From Penrose's The Emperor's New Mind)
- back_increment.txt - increments one to the first number found to the right of the zero-position (since there are only zeroes to the left), but places the new 1 to the left of this number. This demonstrates the program's ability to generate indefinitely manny zeroes to the left, and shift the rest of the tape right accordingly/
- in
+ 
+ back_increment.txt - increments one to the first number found to the right of the zero-position (since there are only zeroes to the left), but places the new 1 to the left of this number. This demonstrates the program's ability to generate indefinitely manny zeroes to the left, and shift the rest of the tape right accordingly.
+ 
+ infinite.txt - changes nothing on the tape, and moves right indefinitely. Demonstrates zero-generation to the right, and the program's safety check against instruction tables with no STOP command.
+ 
+ euclid.txt - carries out Euclid's algorithm for finding the highest common divisor of two positive integers, each in unary form, separated by one zero. (From Penrose)
