@@ -34,6 +34,7 @@
 
 #define BUFFER_SIZE 128
 FILE *LOG_STREAM;
+FILE *tapef;
 
 // The instruction list is captured by a two-dimensional array, structured as [state][bit], of 
 // operations to carry out. Each operation is a struct of a new state to enter, a digit to write,
@@ -52,6 +53,8 @@ int position = 0;
 int buf_pos = 0;
 char state = 0;
 bool buffer[BUFFER_SIZE];
+int flen;
+int left_added = 0;
 
 // Print a formatted string to the log, i.e. either to stdout or do nothing
 // LOG_STREAM is the stream that we print to, by default stdout or a file if specified with -o;
@@ -70,9 +73,10 @@ void logprint(char *fmt, ...){
 
 // Print the command-line usage text
 void print_usg(){
-	printf("USAGE: ./tape.c [INSTRUCTION SET] [TAPE] [OPTIONS]\n\n");
+	printf("USAGE: ./tape.c [INSTRUCTIONS] [TAPE] [OPTIONS]\n\n");
 	printf("Options:\n\n\t-s\t\tsilence log\n");
-	printf("\t-o [FILENAME]\twrite log to FILENAME\n\n");
+	printf("\t-o [FILENAME]\twrite log to FILENAME\n");
+	printf("\t-c\t\tclean resulting tape of leading / trailing zeroes\n\n");
 }
 
 // Return a char * detailing the given instruction
@@ -172,7 +176,7 @@ int parse_instruc(char *instruc){
 	i++;
 
 	// Check the instruction contains enough characters for the remaining
-	if (strlen(opchars) < i+4)
+	if (strlen(opchars) < i+3)
 		return 6;
 	
 	// The next comma-delimited segment is either a 1 or a 0
@@ -311,10 +315,14 @@ int load_instrucs(char *fname){
  * write_buf() writes the current contents of the buffer back to the relevant segment of tape
  * load_tape() opens the tape file and sets the global variable tapef to point to it
  */
-FILE *tapef;
 
 int read_buf(int start){
 	extern FILE *tapef;
+	extern int left_added;
+	extern bool buffer[BUFFER_SIZE];
+
+	// Take into account that the start of the file might not be start = 0
+	start += BUFFER_SIZE * left_added;
 
 	// Generate indefinite zeroes to either side of the tape that already exists
 	if (fseek(tapef, start, SEEK_SET) != 0){
@@ -345,6 +353,12 @@ int read_buf(int start){
 
 int write_buf(int start){
 	extern FILE *tapef;
+	extern int flen;
+	extern int left_added;
+	extern bool buffer[BUFFER_SIZE];
+
+	start += BUFFER_SIZE * left_added;
+
 	if (fseek(tapef, start, SEEK_SET) != 0){
 		if (start < 0){
 			// The start point is before the file begins, i.e. a new buffer-sized segment has been
@@ -353,8 +367,6 @@ int write_buf(int start){
 			// begin somewhere - so we can justifiably 'cheat' by moving the whole file to the right
 			// in a chunk of a size that the machine we are simulating wouldn't be able to process
 			// all at once.
-			fseek(tapef, 0, SEEK_END);
-			int flen = ftell(tapef);
 			char curr_f[flen];
 
 			fseek(tapef, 0, SEEK_SET);
@@ -365,6 +377,10 @@ int write_buf(int start){
 			write_buf(0);
 			for (int i=0; i<flen; i++)
 				fputc(curr_f[i], tapef);
+
+			// Update a global variable for how many times we have done this, for use in
+			// keeping track of what an overall position of x means as a file position
+			left_added++;
 
 			return 0;
 		} else{
@@ -395,14 +411,51 @@ int load_tape(char *fname){
 		return 1;
 	}
 
+	// Get the file's length in bytes, for later
+	extern int flen;
+	fseek(tapef, 0, SEEK_END);
+	flen = ftell(tapef);
+
 	if (read_buf(0))
 		return 1;
 
 	return 0;
 }
 
+void strip_zeroes(char *fname){
+	extern FILE *tapef;
+	fseek(tapef, 0, SEEK_SET);
+
+	// Seek to the first 1
+	while (fgetc(tapef) == '0')
+		;
+	fseek(tapef, -1, SEEK_CUR);
+	int start = ftell(tapef);
+
+	// First identifying where that last 1 is
+	fseek(tapef, 0, SEEK_END);
+	while (fgetc(tapef) != '1')
+		fseek(tapef, -2, SEEK_CUR);
+	int end = ftell(tapef);
+
+	// Then storing everything from the first to the last 1 in an array
+	char maintape[end - start];
+
+	fseek(tapef, start, SEEK_SET);
+	for (int i=0; ftell(tapef) < end; i++)
+		maintape[i] = fgetc(tapef);
+	
+	// Finally clear the tape file, and write the main section to it
+	fclose(tapef);
+	tapef = fopen(fname, "w");
+	for (int i=0; i<end-start; i++)
+		fputc(maintape[i], tapef);
+}
+
 int run(){
 	struct op curr_op;
+	extern bool buffer[BUFFER_SIZE];
+
 	logprint("Execution:\n");
 	logprint("|Machine state | Position | Bit | Instruction\n");
 	logprint("|=================================================\n");
@@ -464,8 +517,10 @@ int main(int argc, char *argv[]){
 	}
 
 	// Handle any optional args
+	extern FILE *tapef;
 	extern FILE *LOG_STREAM;
 	LOG_STREAM = stdout;
+	bool strip = false;
 
 	for (int a=3; a<argc; a++){
 		if (strcmp(argv[a], "-o") == 0){
@@ -479,6 +534,8 @@ int main(int argc, char *argv[]){
 			}
 		} else if (strcmp(argv[a], "-s") == 0){
 			LOG_STREAM = NULL;
+		} else if (strcmp(argv[a], "-c") == 0){
+			strip = true;
 		}
 	}
 
@@ -494,8 +551,11 @@ int main(int argc, char *argv[]){
 	// Run the machine
 	if (run())
 		return 1;
+	if (strip)
+		strip_zeroes(argv[2]);
 
 	free(instructions);
+	fclose(tapef);
 	if (LOG_STREAM != stdout)
 		fclose(LOG_STREAM);
 
